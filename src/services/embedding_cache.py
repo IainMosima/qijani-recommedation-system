@@ -1,9 +1,12 @@
 import os
-import pickle
+from pathlib import Path
 from typing import Dict, List, Any, Optional
+import json
 import hashlib
+import pickle
 
 from langchain_openai import OpenAIEmbeddings
+from langchain_nomic import NomicEmbeddings
 
 
 class EmbeddingCache:
@@ -11,46 +14,62 @@ class EmbeddingCache:
     Cache for storing and retrieving text embeddings to avoid redundant API calls.
     """
     
-    def __init__(self, cache_dir: str = ".embedding_cache"):
+    def __init__(self, cache_dir: str = "./embedding_cache"):
         """
         Initialize the embedding cache.
         
         Args:
             cache_dir (str): Directory to store the cache files
         """
-        self.cache_dir = cache_dir
-        self.embeddings_model = OpenAIEmbeddings()
-        self.cache = {}
+        self.cache_dir = Path(cache_dir)
+        self.cache_file = self.cache_dir / "embedding_cache.pkl"
+        self.cache: Dict[str, List[float]] = {}
         
-        # Create cache directory if it doesn't exist
-        os.makedirs(self.cache_dir, exist_ok=True)
+        # Ensure cache directory exists
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Load existing cache if available
+        # Load existing cache
         self._load_cache()
+        
+        # Try to initialize OpenAI embeddings first
+        if os.getenv("OPENAI_API_KEY"):
+            self.embeddings_model = OpenAIEmbeddings()
+        else:
+            # Fallback to local embeddings model
+            try:
+                self.embeddings_model = NomicEmbeddings()
+            except Exception as e:
+                raise RuntimeError(
+                    "Failed to initialize embeddings. Please set OPENAI_API_KEY "
+                    "environment variable or ensure local embedding model is available."
+                ) from e
+    
+    def _load_cache(self) -> None:
+        """Load the cache from disk."""
+        try:
+            if self.cache_file.exists():
+                with open(self.cache_file, "rb") as f:
+                    self.cache = pickle.load(f)
+                print(f"Loaded {len(self.cache)} cached embeddings")
+            else:
+                print("No existing cache found, starting fresh")
+                self.cache = {}
+        except Exception as e:
+            print(f"Error loading cache: {e}")
+            self.cache = {}
+    
+    def _save_cache(self) -> None:
+        """Save the cache to disk."""
+        try:
+            with open(self.cache_file, "wb") as f:
+                pickle.dump(self.cache, f)
+            print(f"Saved {len(self.cache)} embeddings to cache")
+        except Exception as e:
+            print(f"Error saving cache: {e}")
     
     def _generate_key(self, text: str) -> str:
         """Generate a unique key for a text string."""
         return hashlib.md5(text.encode('utf-8')).hexdigest()
-    
-    def _load_cache(self) -> None:
-        """Load the cache from disk if it exists."""
-        cache_file = os.path.join(self.cache_dir, "embedding_cache.pkl")
-        if os.path.exists(cache_file):
-            try:
-                with open(cache_file, "rb") as f:
-                    self.cache = pickle.load(f)
-            except Exception as e:
-                print(f"Error loading cache: {e}")
-                self.cache = {}
-    
-    def _save_cache(self) -> None:
-        """Save the cache to disk."""
-        cache_file = os.path.join(self.cache_dir, "embedding_cache.pkl")
-        try:
-            with open(cache_file, "wb") as f:
-                pickle.dump(self.cache, f)
-        except Exception as e:
-            print(f"Error saving cache: {e}")
     
     def get_embedding(self, text: str) -> List[float]:
         """

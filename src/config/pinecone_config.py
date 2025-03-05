@@ -1,47 +1,27 @@
 import os
-from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
-from typing import Optional
 
-load_dotenv()
-
-def initialize_pinecone(dimension: int = 1536, index_name: str = "recommendation-index"):
-    """
-    Initialize Pinecone with the specified index.
+def initialize_pinecone(index_name: str) -> None:
+    """Initialize Pinecone and create index if it doesn't exist."""
     
-    Args:
-        dimension (int): Dimension of vectors to store (default for OpenAI embeddings is 1536)
-        index_name (str): Name of the Pinecone index to use
-        
-    Returns:
-        The initialized Pinecone index
-    """
-    # Get API key from environment
-    api_key = os.getenv("PINECONE_API_KEY")
-    if not api_key:
-        raise ValueError("PINECONE_API_KEY environment variable not set")
+    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
     
-    # Initialize Pinecone client
-    pc = Pinecone(api_key=api_key)
-    
-    # Check if index already exists
-    existing_indexes = [index_info["name"] for index_info in pc.list_indexes()]
+    # List existing indexes
+    existing_indexes = [index.name for index in pc.list_indexes()]
     
     if index_name not in existing_indexes:
-        # Create index if it doesn't exist
         print(f"Creating new Pinecone index: {index_name}")
         pc.create_index(
             name=index_name,
-            dimension=dimension,
+            dimension=1536,  # OpenAI embedding dimension
             metric="cosine",
-            spec=ServerlessSpec(cloud="aws", region="us-west-2")
+            spec=ServerlessSpec(
+                cloud="aws",
+                region="us-east-1",
+            )
         )
     else:
         print(f"Using existing Pinecone index: {index_name}")
-    
-    # Return the index
-    return pc.Index(index_name)
-
 
 def delete_pinecone_index(index_name: str = "recommendation-index"):
     """

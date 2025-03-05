@@ -1,36 +1,66 @@
 import os
+import pickle
 import uuid
 from typing import List, Dict, Any, Optional
+import dotenv
 
 from pinecone import Pinecone
-from langchain.vectorstores import PineconeVectorStore
 
 from src.services.embedding_cache import EmbeddingCache
+from src.config.pinecone_config import initialize_pinecone
 
 
-class RecommendationEngine:
+class RetrivalEngine:
     """
     Recommendation engine using Pinecone vector database and cached embeddings.
     """
 
-    def __init__(self, index_name: str = "recommendation-index"):
+    def __init__(self, index_name: str = "recommendation-index", cache_dir: str = "./embedding_cache"):
         """
         Initialize the recommendation engine.
         
         Args:
             index_name (str): Name of the Pinecone index to use
+            cache_dir (str): Directory to store the embedding cache
         """
         self.index_name = index_name
-        self.embedding_cache = EmbeddingCache()
+        self.cache_dir = cache_dir
         
-        # Initialize Pinecone client
-        api_key = os.getenv("PINECONE_API_KEY")
-        if not api_key:
-            raise ValueError("PINECONE_API_KEY environment variable not set")
-            
-        pc = Pinecone(api_key=api_key)
-        self.index = pc.Index(self.index_name)
+        # Ensure cache directory exists
+        os.makedirs(cache_dir, exist_ok=True)
         
+        # Initialize embedding cache
+        try:
+            self.embedding_cache = EmbeddingCache(cache_dir=cache_dir)
+        except Exception as e:
+            print(f"Error initializing embedding cache: {e}")
+            raise
+        
+        # Initialize Pinecone
+        try:
+            initialize_pinecone(index_name)
+            pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+            self.index = pc.Index(index_name)
+        except Exception as e:
+            print(f"Error initializing Pinecone: {e}")
+            raise
+
+    def _load_cache(self):
+        cache_file = os.path.join(self.cache_dir, "embedding_cache.pkl")
+        try:
+            with open(cache_file, "rb") as f:
+                self.embedding_cache = pickle.load(f)
+        except (FileNotFoundError, EOFError):
+            self.embedding_cache = {}
+
+    def _save_cache(self):
+        cache_file = os.path.join(self.cache_dir, "embedding_cache.pkl")
+        try:
+            with open(cache_file, "wb") as f:
+                pickle.dump(self.embedding_cache, f)
+        except Exception as e:
+            print(f"Error saving cache: {e}")
+
     def add_item(self, content: str, metadata: Dict[str, Any], item_type: str) -> str:
         """
         Add a single item to the recommendation engine.
@@ -83,38 +113,35 @@ class RecommendationEngine:
         """
         if not (len(contents) == len(metadatas) == len(item_types)):
             raise ValueError("Contents, metadatas, and item_types must have the same length")
-        
-        # Generate embeddings in bulk using the cache
-        embeddings = self.embedding_cache.get_embeddings(contents)
-        
-        # Prepare data for Pinecone
-        item_ids = [str(uuid.uuid4()) for _ in range(len(contents))]
-        vectors = []
-        
-        for i, (content, metadata, item_type, embedding) in enumerate(
-            zip(contents, metadatas, item_types, embeddings)
-        ):
-            # Add content and item_type to metadata
-            metadata = metadata.copy()
-            metadata["content"] = content
-            metadata["item_type"] = item_type
+
+        try:
+            # Get embeddings for all contents
+            embeddings = []
+            for content in contents:
+                embedding = self.embedding_cache.get_embedding(content)
+                embeddings.append(embedding)
+
+            # Generate IDs and prepare vectors for Pinecone
+            vectors = []
+            for i, (content, metadata, embedding) in enumerate(zip(contents, metadatas, embeddings)):
+                metadata["content"] = content
+                metadata["item_type"] = item_types[i]
+                vectors.append({
+                    "id": f"item_{i}",
+                    "values": embedding,
+                    "metadata": metadata
+                })
+
+            # Upsert to Pinecone
+            self.index.upsert(vectors=vectors)
             
-            # Create vector record
-            vectors.append({
-                "id": item_ids[i],
-                "values": embedding,
-                "metadata": metadata
-            })
+            return [v["id"] for v in vectors]
         
-        # Upsert in batches to avoid exceeding request size limits
-        batch_size = 100
-        for i in range(0, len(vectors), batch_size):
-            batch = vectors[i:i + batch_size]
-            self.index.upsert(vectors=batch)
-        
-        return item_ids
+        except Exception as e:
+            print(f"Error in bulk_add_items: {e}")
+            raise
     
-    def get_recommendations(
+    def get_retrivals(
         self, 
         query: str, 
         top_k: int = 5,
