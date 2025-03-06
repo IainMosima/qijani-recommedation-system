@@ -1,12 +1,12 @@
 import os
 import sys
+import re
 from typing import List, Literal, Optional
 
 import dotenv
 import pandas as pd
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.chat_models import ChatOllama
 from langchain_community.document_loaders import PyPDFLoader, WebBaseLoader
 from langchain_community.vectorstores import SKLearnVectorStore
 from langchain_core.output_parsers import JsonOutputParser
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from src.services.retrival_engine import RetrivalEngine
 from src.utils.document_loader import load_documents_from_urls
-
+from src.utils.convert_gdrive_link import convert_gdrive_link
 
 
 def main():
@@ -33,8 +33,11 @@ def main():
     df = pd.read_excel(excel_file)
     urls = df['urls'].tolist()
 
+    # Convert any Google Drive share links to direct download links
+    converted_urls = [convert_gdrive_link(url) for url in urls]
+
     # Load documents from the URLs
-    docs = [PyPDFLoader(url).load() for url in urls]
+    docs = [PyPDFLoader(url).load() for url in converted_urls]
     docs_list = [item for sublist in docs for item in sublist]
 
     # Initialize a text splitter with specified chunk size and overlap
