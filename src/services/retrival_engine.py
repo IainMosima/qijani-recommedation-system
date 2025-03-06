@@ -1,6 +1,7 @@
 import os
 import pickle
 import uuid
+import hashlib
 from typing import List, Dict, Any, Optional
 import dotenv
 
@@ -44,6 +45,10 @@ class RetrivalEngine:
         except Exception as e:
             print(f"Error initializing Pinecone: {e}")
             raise
+        
+        # Initialize retrieval results cache
+        self.retrieval_cache_file = os.path.join(cache_dir, "retrieval_cache.pkl")
+        self.retrieval_cache = self._load_retrieval_cache()
 
     def _load_cache(self):
         cache_file = os.path.join(self.cache_dir, "embedding_cache.pkl")
@@ -60,6 +65,38 @@ class RetrivalEngine:
                 pickle.dump(self.embedding_cache, f)
         except Exception as e:
             print(f"Error saving cache: {e}")
+            
+    def _load_retrieval_cache(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Load the retrieval results cache from disk."""
+        try:
+            if os.path.exists(self.retrieval_cache_file):
+                with open(self.retrieval_cache_file, "rb") as f:
+                    cache = pickle.load(f)
+                print(f"Loaded {len(cache)} cached retrieval results")
+                return cache
+            else:
+                print("No existing retrieval cache found, starting fresh")
+                return {}
+        except Exception as e:
+            print(f"Error loading retrieval cache: {e}")
+            return {}
+    
+    def _save_retrieval_cache(self) -> None:
+        """Save the retrieval results cache to disk."""
+        try:
+            with open(self.retrieval_cache_file, "wb") as f:
+                pickle.dump(self.retrieval_cache, f)
+            print(f"Saved {len(self.retrieval_cache)} retrieval results to cache")
+        except Exception as e:
+            print(f"Error saving retrieval cache: {e}")
+
+    def _generate_retrieval_key(self, query: str, top_k: int, filter_criteria: Optional[Dict[str, Any]]) -> str:
+        """Generate a unique key for a retrieval query."""
+        # Convert filter_criteria to a stable string representation
+        filter_str = str(sorted(filter_criteria.items())) if filter_criteria else "None"
+        # Combine query parameters into a string and hash it
+        key_str = f"{query}|{top_k}|{filter_str}"
+        return hashlib.md5(key_str.encode('utf-8')).hexdigest()
 
     def add_item(self, content: str, metadata: Dict[str, Any], item_type: str) -> str:
         """
@@ -91,6 +128,10 @@ class RetrivalEngine:
                 "metadata": metadata
             }
         ])
+        
+        # Clear retrieval cache since the index has been modified
+        self.retrieval_cache = {}
+        self._save_retrieval_cache()
         
         return item_id
     
@@ -135,6 +176,10 @@ class RetrivalEngine:
             # Upsert to Pinecone
             self.index.upsert(vectors=vectors)
             
+            # Clear retrieval cache since the index has been modified
+            self.retrieval_cache = {}
+            self._save_retrieval_cache()
+            
             return [v["id"] for v in vectors]
         
         except Exception as e:
@@ -158,6 +203,17 @@ class RetrivalEngine:
         Returns:
             List[Dict[str, Any]]: Recommended items with scores and metadata
         """
+        # Generate a key for this query
+        cache_key = self._generate_retrieval_key(query, top_k, filter_criteria)
+        
+        # Check if this query is already cached
+        if cache_key in self.retrieval_cache:
+            print(f"Using cached retrieval results for: {query[:30]}...")
+            return self.retrieval_cache[cache_key]
+        
+        # Not in cache, proceed with normal retrieval
+        print(f"Performing new retrieval for: {query[:30]}...")
+        
         # Generate embedding for query using cache
         query_embedding = self.embedding_cache.get_embedding(query)
         
@@ -178,6 +234,10 @@ class RetrivalEngine:
                 "metadata": match["metadata"]
             })
         
+        # Cache the results
+        self.retrieval_cache[cache_key] = recommendations
+        self._save_retrieval_cache()
+        
         return recommendations
     
     def delete_item(self, item_id: str) -> None:
@@ -188,3 +248,13 @@ class RetrivalEngine:
             item_id (str): ID of the item to delete
         """
         self.index.delete(ids=[item_id])
+        
+        # Clear retrieval cache since the index has been modified
+        self.retrieval_cache = {}
+        self._save_retrieval_cache()
+        
+    def clear_retrieval_cache(self) -> None:
+        """Clear the retrieval results cache."""
+        self.retrieval_cache = {}
+        self._save_retrieval_cache()
+        print("Retrieval cache cleared.")
