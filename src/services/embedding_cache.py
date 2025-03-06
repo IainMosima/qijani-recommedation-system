@@ -35,14 +35,17 @@ class EmbeddingCache:
         if os.getenv("OPENAI_API_KEY"):
             self.embeddings_model = OpenAIEmbeddings()
         else:
-            # Fallback to local embeddings model
-            try:
-                self.embeddings_model = NomicEmbeddings()
-            except Exception as e:
-                raise RuntimeError(
+            raise RuntimeError(
                     "Failed to initialize embeddings. Please set OPENAI_API_KEY "
                     "environment variable or ensure local embedding model is available."
-                ) from e
+                )
+            # try:
+            #     self.embeddings_model = NomicEmbeddings()
+            # except Exception as e:
+            #     raise RuntimeError(
+            #         "Failed to initialize embeddings. Please set OPENAI_API_KEY "
+            #         "environment variable or ensure local embedding model is available."
+            #     ) from e
     
     def _load_cache(self) -> None:
         """Load the cache from disk."""
