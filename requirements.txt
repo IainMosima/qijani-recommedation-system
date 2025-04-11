@@ -41,3 +41,4 @@ pinecone
 openpyxl
 pypdf
 langchain-ollama
+langgraph
