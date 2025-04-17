@@ -42,3 +42,4 @@ openpyxl
 pypdf
 langchain-ollama
 langgraph
+search_wikipedia
