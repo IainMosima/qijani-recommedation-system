@@ -47,3 +47,5 @@ langchain-core~=0.3.44
 python-dotenv~=1.0.1
 pandas~=2.2.3
 typing_extensions~=4.12.2
+uv
+poetry
