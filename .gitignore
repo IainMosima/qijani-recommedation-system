@@ -5,3 +5,5 @@ __pycache__/
 */__pycache__/
 embedding_cache/
 .idea
+src/deployment/.langgraph_api
+src/deployment/qijani_recommendation_engine/__pycache__

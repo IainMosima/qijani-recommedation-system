@@ -1,0 +1,9 @@
+services:
+  meal-recommendation-engine:
+    platform: linux/amd64
+    build:
+      context: ./
+    image: mosimaiain/qijani-recommendation-engine:prod
+    ports:
+      - "2024:2024"
+    mem_limit: 500m
