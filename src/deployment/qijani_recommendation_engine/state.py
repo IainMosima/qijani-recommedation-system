@@ -50,11 +50,7 @@ class UserProfile(BaseModel):
     weight_kg: float = Field(..., gt=20, lt=300, description="Weight in kg")
     activity_level: str = Field(...,
                                 description="Sedentary, Lightly active, Moderately active, Very active, Super active")
-    dietary_preferences: List[Literal[
-        "Vegetarian", "Vegan", "Pescatarian", "Keto", "Paleo",
-        "Gluten-Free", "Dairy-Free", "Nut-Free", "Halal", "Kosher",
-        "Low-Carb", "Low-Fat", "High-Protein", "Mediterranean", "FODMAP", "Sugar-Free"
-    ]] = Field(default=[], description="User's dietary preferences, can be one or more.")
+    dietary_preferences: List[str] = Field(default=[], description="User's dietary preferences, can be one or more.")
     allergies: List[str] = Field(default=[], description="User's allergies")
     health_conditions: List[str] = Field(default=[], description="Any medical conditions")
     weight_goal: str = Field(default="", description="Lose weight, Maintain weight, Gain muscle")
