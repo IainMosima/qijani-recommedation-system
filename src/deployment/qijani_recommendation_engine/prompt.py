@@ -19,7 +19,7 @@ retriever_prompt = PromptTemplate(
     - Past Meal History (if available): {past_meals}
 
     ### Task:
-    Generate a structured JSON response with **multiple queries** for retrieving meal plans.
+    Generate a structured JSON response with **multiple queries** for retrieving meal plans, make sure you create new meals different from past meals.
     Each query should focus on **one meal category**:
     - Breakfast
     - Lunch
